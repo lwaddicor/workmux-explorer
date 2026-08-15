@@ -7,7 +7,8 @@ context: |
   (127.0.0.1:8787) over workmux worktrees and agents.
   We use conventional commits for every commit (feat/fix/docs/refactor/test/chore).
   Development happens in workmux worktrees; work finishes via git push + PR
-  (never `workmux merge`).
+  (never `workmux merge`). The main worktree owns port 8787; run worktree
+  instances on 8788+ (serve -listen 127.0.0.1:8788).
   Layout: cmd/gittreemux (CLI), internal/{api,discover,workmux,tmux,exec,actionlog}, web/.
 
 # Per-artifact rules (optional)

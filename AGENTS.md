@@ -76,6 +76,10 @@ window, named `wm-<handle>`).
   Don't research the codebase before dispatching; the worktree agent does that.
 - **Monitor** — `workmux status`, `workmux wait <handle>`,
   `workmux capture <handle>`, `workmux send <handle> "msg"`.
+- **Running the app** — the main worktree owns `127.0.0.1:8787`. When
+  developing in a worktree, run your instance on a different port so both
+  work: `go run ./cmd/gittreemux serve -listen 127.0.0.1:8788` (8788+ for
+  worktrees). Don't assume 8787 is free; don't kill the main instance.
 - **Finish (standard flow)** — commit with conventional commits,
   `git push -u origin HEAD`, open a PR (use the `open-pr` skill /
   `/open-pr`), then after the PR merges remove the worktree:
