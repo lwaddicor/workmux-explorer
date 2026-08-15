@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>gittreemux — workmux dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>gittreemux</h1>
+      <span class="tag">cross-project workmux dashboard</span>
+    </div>
+    <div class="controls">
+      <span id="status-badge" class="badge badge-idle"></span>
+      <label class="poll">poll
+        <input id="poll-interval" type="number" min="1000" step="500" value="4000"> ms
+      </label>
+      <button id="pause-btn" class="ghost">Pause</button>
+      <span id="last-updated" class="muted"></span>
+    </div>
+  </header>
+
+  <div id="banner" class="banner hidden"></div>
+
+  <div id="content">
+    <nav id="sidebar" aria-label="repositories"></nav>
+    <main id="worktree-grid" aria-live="polite"></main>
+  </div>
+
+  <div id="empty" class="empty hidden">
+    <p id="empty-text">No worktrees found.</p>
+  </div>
+
+  <div id="detail" class="detail hidden" role="dialog" aria-label="agent output">
+    <div class="detail-head">
+      <span id="detail-title" class="detail-title"></span>
+      <button id="detail-close" class="icon-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <pre id="detail-output" class="detail-output"></pre>
+    <div id="detail-status" class="muted"></div>
+  </div>
+
+  <div id="send-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="send prompt">
+    <div class="modal-box">
+      <h2>Send prompt to <span id="send-handle"></span></h2>
+      <textarea id="send-text" rows="5" placeholder="Prompt or instruction for the running agent…"></textarea>
+      <div id="send-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="send-cancel" class="ghost">Cancel</button>
+        <button id="send-submit" class="primary">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
