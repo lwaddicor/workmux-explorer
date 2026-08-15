@@ -1,0 +1,41 @@
+// Package api exposes the JSON HTTP API and the embedded web UI over
+// stdlib net/http. It is bound to loopback by default and stays stateless:
+// every request reflects live local state via the Discoverer.
+package api
+
+import (
+	"net/http"
+
+	"gittreemux/internal/actionlog"
+	"gittreemux/internal/discover"
+	"gittreemux/internal/workmux"
+	"gittreemux/web"
+)
+
+// Server holds the collaborators shared by all handlers.
+type Server struct {
+	Discoverer *discover.Discoverer
+	Workmux    *workmux.Client
+	Log        *actionlog.Logger
+}
+
+// Routes builds the mux serving both the JSON API and the embedded web UI.
+// It relies on Go 1.22+ method+path patterns for clean routing.
+func (s *Server) Routes() http.Handler {
+	mux := http.NewServeMux()
+
+	// JSON API.
+	mux.HandleFunc("GET /api/projects", s.handleProjects)
+	mux.HandleFunc("GET /api/projects/{project}/worktrees/{handle}", s.handleWorktree)
+	mux.HandleFunc("GET /api/projects/{project}/worktrees/{handle}/output", s.handleOutput)
+	mux.HandleFunc("POST /api/projects/{project}/worktrees/{handle}/open", s.handleOpen)
+	mux.HandleFunc("POST /api/projects/{project}/worktrees/{handle}/close", s.handleClose)
+	mux.HandleFunc("POST /api/projects/{project}/worktrees/{handle}/send", s.handleSend)
+	mux.HandleFunc("POST /api/projects/{project}/worktrees/{handle}/remove", s.handleRemove)
+	mux.HandleFunc("GET /api/health", s.handleHealth)
+
+	// Web UI (embedded) + assets; the more specific /api routes win first.
+	mux.Handle("GET /", http.FileServer(http.FS(web.FS())))
+
+	return mux
+}
