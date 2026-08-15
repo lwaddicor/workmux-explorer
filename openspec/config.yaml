@@ -1,13 +1,14 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Tech stack: Go 1.26, stdlib only — no external dependencies.
+  Web UI is vanilla JS/CSS embedded via go:embed; no framework, no build step.
+  Single self-contained binary serving a loopback-only local web dashboard
+  (127.0.0.1:8787) over workmux worktrees and agents.
+  We use conventional commits for every commit (feat/fix/docs/refactor/test/chore).
+  Development happens in workmux worktrees; work finishes via git push + PR
+  (never `workmux merge`).
+  Layout: cmd/gittreemux (CLI), internal/{api,discover,workmux,tmux,exec,actionlog}, web/.
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.
