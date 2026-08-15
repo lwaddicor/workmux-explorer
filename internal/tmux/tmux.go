@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"gittreemux/internal/exec"
+	"github.com/lwaddicor/gittreemux/internal/exec"
 )
 
 // ErrNotRunning is returned when the tmux binary is missing or no server is
