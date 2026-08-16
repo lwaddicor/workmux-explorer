@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gittreemux/internal/focus"
+	"gittreemux/internal/tmux"
 	"gittreemux/internal/workmux"
 )
 
@@ -122,6 +124,89 @@ func (s *Server) doAction(w http.ResponseWriter, r *http.Request, action string)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "action": action, "project": p.Name, "handle": handle})
+}
+
+// focusWindowPrefix is the workmux tmux window name prefix used when
+// recovering a session from live panes. It matches the default discovery
+// prefix; the agent's own session is the primary source when available.
+const focusWindowPrefix = "wm-"
+
+// handleFocus focuses a worktree whose window is already open: it switches to
+// the worktree's tmux window and best-effort brings the hosting terminal to the
+// OS foreground. A failure to switch the window is a hard error; a failure to
+// activate the terminal is reported in the response and does not fail the action.
+func (s *Server) handleFocus(w http.ResponseWriter, r *http.Request) {
+	project := r.PathValue("project")
+	handle := r.PathValue("handle")
+
+	p, err := s.findProject(r.Context(), project)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err)
+		return
+	}
+	wt, ok := getWorktree(p, handle)
+	if !ok {
+		writeErr(w, http.StatusNotFound, fmt.Errorf("worktree %q not found in project %q", handle, project))
+		return
+	}
+	if !wt.IsOpen {
+		writeErr(w, http.StatusConflict, fmt.Errorf("worktree %q has no open window to focus", handle))
+		return
+	}
+
+	if runErr := s.Workmux.Open(p.Root, handle); runErr != nil {
+		s.log("focus", project, handle, runErr)
+		writeErr(w, http.StatusBadGateway, runErr)
+		return
+	}
+
+	session := resolveFocusSession(wt, handle)
+	var res focus.Result
+	if session != "" {
+		res = s.focusActivator().ActivateSession(session)
+	} else {
+		res = focus.Result{Activated: false, Note: "could not determine the tmux session to bring a terminal to the front"}
+	}
+
+	s.log("focus", project, handle, nil)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":        true,
+		"action":    "focus",
+		"project":   p.Name,
+		"handle":    handle,
+		"activated": res.Activated,
+		"app":       res.App,
+		"note":      res.Note,
+	})
+}
+
+// resolveFocusSession determines the tmux session to activate for a worktree.
+// It prefers the worktree's agent session and falls back to matching the
+// workmux window name against live panes. It returns an empty string when no
+// session can be determined.
+func resolveFocusSession(wt *workmux.Worktree, handle string) string {
+	if wt.Agent != nil && wt.Agent.Session != "" {
+		return wt.Agent.Session
+	}
+	panes, err := tmux.ListPanes()
+	if err != nil {
+		return ""
+	}
+	target := focusWindowPrefix + handle
+	for _, p := range panes {
+		if p.WindowName == target {
+			return p.Session
+		}
+	}
+	return ""
+}
+
+// focusActivator returns the configured focus activator, or a default one.
+func (s *Server) focusActivator() *focus.Activator {
+	if s.Focus != nil {
+		return s.Focus
+	}
+	return focus.New()
 }
 
 type sendBody struct {

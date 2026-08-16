@@ -17,6 +17,7 @@ import (
 	"gittreemux/internal/actionlog"
 	"gittreemux/internal/api"
 	"gittreemux/internal/discover"
+	"gittreemux/internal/focus"
 	"gittreemux/internal/workmux"
 )
 
@@ -91,7 +92,7 @@ func runServe(args []string) int {
 		Workmux:     client,
 	})
 
-	srv := &api.Server{Discoverer: disc, Workmux: client, Log: alc}
+	srv := &api.Server{Discoverer: disc, Workmux: client, Log: alc, Focus: focus.New()}
 	httpSrv := &http.Server{
 		Addr:              *listen,
 		Handler:           srv.Routes(),

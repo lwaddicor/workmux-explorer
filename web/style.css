@@ -158,6 +158,16 @@ button.danger:hover { background: rgba(248, 81, 73, .12); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 .error { color: var(--red); margin-top: 10px; font-size: 13px; }
 
+/* Notification toast (non-blocking) */
+.notify {
+  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+  max-width: min(560px, 90vw);
+  padding: 12px 18px; border-radius: var(--radius);
+  border: 1px solid var(--accent); background: var(--panel-2); color: var(--text);
+  box-shadow: 0 12px 40px rgba(0,0,0,.5);
+  z-index: 60; font-size: 13px;
+}
+
 /* Narrow viewport */
 @media (max-width: 860px) {
   #content { flex-direction: column; }
