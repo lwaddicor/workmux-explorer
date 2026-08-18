@@ -160,10 +160,10 @@ func (s *Server) handleFocus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session := resolveFocusSession(wt, handle)
+	session, paneID := resolveFocusTarget(wt, handle)
 	var res focus.Result
 	if session != "" {
-		res = s.focusActivator().ActivateSession(session)
+		res = s.focusActivator().ActivateSession(session, paneID)
 	} else {
 		res = focus.Result{Activated: false, Note: "could not determine the tmux session to bring a terminal to the front"}
 	}
@@ -180,25 +180,27 @@ func (s *Server) handleFocus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// resolveFocusSession determines the tmux session to activate for a worktree.
-// It prefers the worktree's agent session and falls back to matching the
-// workmux window name against live panes. It returns an empty string when no
-// session can be determined.
-func resolveFocusSession(wt *workmux.Worktree, handle string) string {
+// resolveFocusTarget determines the tmux session to activate for a worktree and
+// a pane id within its window, which iTerm2 needs to identify the tab to
+// surface. It prefers the worktree's agent session and falls back to matching
+// the workmux window name against live panes. The session is empty when no
+// session can be determined; the pane id is empty when only the session is
+// known.
+func resolveFocusTarget(wt *workmux.Worktree, handle string) (session, paneID string) {
 	if wt.Agent != nil && wt.Agent.Session != "" {
-		return wt.Agent.Session
+		return wt.Agent.Session, wt.Agent.PaneID
 	}
 	panes, err := tmux.ListPanes()
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	target := focusWindowPrefix + handle
 	for _, p := range panes {
 		if p.WindowName == target {
-			return p.Session
+			return p.Session, p.ID
 		}
 	}
-	return ""
+	return "", ""
 }
 
 // focusActivator returns the configured focus activator, or a default one.
