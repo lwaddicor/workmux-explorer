@@ -180,6 +180,7 @@ function renderWorktree(w, projectName) {
     ${git}
     <div class="wt-actions">
       <button data-act="open" data-project="${esc(projectName)}" data-handle="${esc(w.handle)}">Open window</button>
+      ${w.is_open ? `<button data-act="focus" class="primary" data-project="${esc(projectName)}" data-handle="${esc(w.handle)}">Focus</button>` : ""}
       <button data-act="close" data-project="${esc(projectName)}" data-handle="${esc(w.handle)}">Close window</button>
       <button data-act="send" data-project="${esc(projectName)}" data-handle="${esc(w.handle)}" ${sendDisabled}>Send prompt</button>
       <button data-act="output" data-project="${esc(projectName)}" data-handle="${esc(w.handle)}" ${outDisabled}>Output</button>
@@ -232,6 +233,37 @@ async function doAction(project, handle, action) {
   } catch (e) {
     alert(action + " failed: " + e.message);
   }
+}
+
+// doFocus focuses an open worktree's window and, when the terminal could not be
+// brought to the front or its window could not be surfaced, shows a brief
+// non-blocking notice with the reason.
+async function doFocus(project, handle) {
+  try {
+    const data = await api(`/api/projects/${enc(project)}/worktrees/${enc(handle)}/focus`, { method: "POST" });
+    await load();
+    if (data && data.note) {
+      notify(data.note);
+    }
+  } catch (e) {
+    alert("focus failed: " + e.message);
+  }
+}
+
+let notifyTimer = null;
+function notify(msg) {
+  let el = $("notify");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "notify";
+    el.className = "notify hidden";
+    el.setAttribute("role", "status");
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  if (notifyTimer) clearTimeout(notifyTimer);
+  notifyTimer = setTimeout(() => el.classList.add("hidden"), 6000);
 }
 
 function doRemove(project, handle, dirty) {
@@ -327,6 +359,7 @@ function onWorktreeClick(e) {
   const project = btn.dataset.project;
   const handle = btn.dataset.handle;
   if (act === "open") doAction(project, handle, "open");
+  else if (act === "focus") doFocus(project, handle);
   else if (act === "close") doAction(project, handle, "close");
   else if (act === "send") openSend(project, handle);
   else if (act === "output") openDetail(project, handle);
