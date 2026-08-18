@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gittreemux/internal/focus"
-	"gittreemux/internal/tmux"
-	"gittreemux/internal/workmux"
+	"github.com/lwaddicor/gittreemux/internal/focus"
+	"github.com/lwaddicor/gittreemux/internal/tmux"
+	"github.com/lwaddicor/gittreemux/internal/workmux"
 )
 
 // findProject locates a project by its name (basename) or root path in a fresh

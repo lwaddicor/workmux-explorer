@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"gittreemux/internal/exec"
-	"gittreemux/internal/focus"
-	"gittreemux/internal/workmux"
+	"github.com/lwaddicor/gittreemux/internal/exec"
+	"github.com/lwaddicor/gittreemux/internal/focus"
+	"github.com/lwaddicor/gittreemux/internal/workmux"
 )
 
 // fakeInventoryProvider returns a fixed inventory so handlers can be tested

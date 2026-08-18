@@ -14,11 +14,11 @@ import (
 	"syscall"
 	"time"
 
-	"gittreemux/internal/actionlog"
-	"gittreemux/internal/api"
-	"gittreemux/internal/discover"
-	"gittreemux/internal/focus"
-	"gittreemux/internal/workmux"
+	"github.com/lwaddicor/gittreemux/internal/actionlog"
+	"github.com/lwaddicor/gittreemux/internal/api"
+	"github.com/lwaddicor/gittreemux/internal/discover"
+	"github.com/lwaddicor/gittreemux/internal/focus"
+	"github.com/lwaddicor/gittreemux/internal/workmux"
 )
 
 func main() {

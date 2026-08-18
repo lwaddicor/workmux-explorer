@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gittreemux/internal/exec"
+	"github.com/lwaddicor/gittreemux/internal/exec"
 )
 
 // Runner executes a command without a shell and returns its captured output.

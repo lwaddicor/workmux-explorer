@@ -48,10 +48,12 @@ body {
 .brand .tag { color: var(--muted); font-size: 12px; }
 .controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .poll { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
-.poll input {
-  width: 74px; background: var(--panel); color: var(--text);
+.poll input,
+.poll select {
+  background: var(--panel); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; font-size: 12px;
 }
+.poll input { width: 74px; }
 #last-updated { font-size: 12px; }
 
 /* Buttons */

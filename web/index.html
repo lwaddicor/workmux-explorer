@@ -14,6 +14,14 @@
     </div>
     <div class="controls">
       <span id="status-badge" class="badge badge-idle"></span>
+      <label class="poll">sort
+        <select id="sort-order">
+          <option value="created_desc">Newest created</option>
+          <option value="created_asc">Oldest created</option>
+          <option value="name_asc">Name (A→Z)</option>
+          <option value="name_desc">Name (Z→A)</option>
+        </select>
+      </label>
       <label class="poll">poll
         <input id="poll-interval" type="number" min="1000" step="500" value="4000"> ms
       </label>

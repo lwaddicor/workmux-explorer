@@ -7,10 +7,10 @@ import (
 	"context"
 	"net/http"
 
-	"gittreemux/internal/actionlog"
-	"gittreemux/internal/focus"
-	"gittreemux/internal/workmux"
-	"gittreemux/web"
+	"github.com/lwaddicor/gittreemux/internal/actionlog"
+	"github.com/lwaddicor/gittreemux/internal/focus"
+	"github.com/lwaddicor/gittreemux/internal/workmux"
+	"github.com/lwaddicor/gittreemux/web"
 )
 
 // inventoryProvider abstracts the cross-project inventory so handlers can be

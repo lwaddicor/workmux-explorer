@@ -43,6 +43,36 @@ function fmtCreated(unix) {
   return days + "d ago (" + new Date(unix * 1000).toLocaleDateString() + ")";
 }
 
+const SORT_MODES = ["created_desc", "created_asc", "name_asc", "name_desc"];
+
+function getSortMode() {
+  const m = localStorage.getItem("gt_sort");
+  return SORT_MODES.indexOf(m) >= 0 ? m : "created_desc";
+}
+
+function sortWorktrees(worktrees, mode) {
+  const arr = (worktrees || []).slice();
+  const byName = (a, b) =>
+    String(a.handle || "").localeCompare(String(b.handle || ""), undefined, { sensitivity: "base" });
+  const created = (w) => (w.created_at != null && w.created_at > 0) ? w.created_at : 0;
+  switch (mode) {
+    case "created_asc":
+      arr.sort((a, b) => created(a) - created(b) || byName(a, b));
+      break;
+    case "name_asc":
+      arr.sort((a, b) => byName(a, b));
+      break;
+    case "name_desc":
+      arr.sort((a, b) => byName(b, a));
+      break;
+    case "created_desc":
+    default:
+      arr.sort((a, b) => created(b) - created(a) || byName(a, b));
+      break;
+  }
+  return arr;
+}
+
 // ---------- render ----------
 let lastInv = null;
 let selectedProject = null;
@@ -97,7 +127,7 @@ function renderGrid(projects) {
   const p = projects.find((x) => x.name === selectedProject) || projects[0];
   selectedProject = p.name;
   localStorage.setItem("gt_selected_project", p.name);
-  const wts = p.worktrees || [];
+  const wts = sortWorktrees(p.worktrees, getSortMode());
   if (!wts.length) {
     $("worktree-grid").innerHTML = '<div class="grid-empty">No worktrees</div>';
     return;
@@ -206,12 +236,13 @@ async function doAction(project, handle, action) {
 }
 
 // doFocus focuses an open worktree's window and, when the terminal could not be
-// brought to the front, surfaces a brief non-blocking notice with the reason.
+// brought to the front or its window could not be surfaced, shows a brief
+// non-blocking notice with the reason.
 async function doFocus(project, handle) {
   try {
     const data = await api(`/api/projects/${enc(project)}/worktrees/${enc(handle)}/focus`, { method: "POST" });
     await load();
-    if (data && data.activated === false && data.note) {
+    if (data && data.note) {
       notify(data.note);
     }
   } catch (e) {
@@ -344,6 +375,12 @@ function init() {
   if (saved) $("poll-interval").value = saved;
 
   selectedProject = localStorage.getItem("gt_selected_project") || null;
+
+  $("sort-order").value = getSortMode();
+  $("sort-order").addEventListener("change", (e) => {
+    localStorage.setItem("gt_sort", e.target.value);
+    if (lastInv) render(lastInv);
+  });
 
   $("poll-interval").addEventListener("change", (e) => { localStorage.setItem("gt_poll", e.target.value); startPolling(); });
   $("pause-btn").addEventListener("click", togglePause);
