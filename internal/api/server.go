@@ -6,10 +6,10 @@ package api
 import (
 	"net/http"
 
-	"github.com/lwaddicor/gittreemux/internal/actionlog"
-	"github.com/lwaddicor/gittreemux/internal/discover"
-	"github.com/lwaddicor/gittreemux/internal/workmux"
-	"github.com/lwaddicor/gittreemux/web"
+	"github.com/lwaddicor/workmux-explorer/internal/actionlog"
+	"github.com/lwaddicor/workmux-explorer/internal/discover"
+	"github.com/lwaddicor/workmux-explorer/internal/workmux"
+	"github.com/lwaddicor/workmux-explorer/web"
 )
 
 // Server holds the collaborators shared by all handlers.

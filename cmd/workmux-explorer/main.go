@@ -1,4 +1,4 @@
-// Command gittreemux is a single, self-contained binary that surfaces every
+// Command workmux-explorer is a single, self-contained binary that surfaces every
 // workmux worktree and agent running on the machine as a local web dashboard,
 // and lets the user act on them from the browser.
 package main
@@ -14,10 +14,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lwaddicor/gittreemux/internal/actionlog"
-	"github.com/lwaddicor/gittreemux/internal/api"
-	"github.com/lwaddicor/gittreemux/internal/discover"
-	"github.com/lwaddicor/gittreemux/internal/workmux"
+	"github.com/lwaddicor/workmux-explorer/internal/actionlog"
+	"github.com/lwaddicor/workmux-explorer/internal/api"
+	"github.com/lwaddicor/workmux-explorer/internal/discover"
+	"github.com/lwaddicor/workmux-explorer/internal/workmux"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 	case "serve":
 		os.Exit(runServe(os.Args[2:]))
 	case "version", "-V", "--version":
-		fmt.Println("gittreemux — cross-project workmux dashboard")
+		fmt.Println("workmux-explorer — cross-project workmux dashboard")
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -40,11 +40,11 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `gittreemux — cross-project workmux dashboard
+	fmt.Fprint(os.Stderr, `workmux-explorer — cross-project workmux dashboard
 
 Usage:
-  gittreemux serve [flags]
-  gittreemux version
+  workmux-explorer serve [flags]
+  workmux-explorer version
 
 Flags for 'serve':
 `)
@@ -108,7 +108,7 @@ func runServe(args []string) int {
 		}
 	}()
 
-	log.Printf("gittreemux dashboard listening on http://%s/", *listen)
+	log.Printf("workmux-explorer dashboard listening on http://%s/", *listen)
 
 	select {
 	case <-ctx.Done():

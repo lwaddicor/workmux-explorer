@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lwaddicor/gittreemux/internal/exec"
-	"github.com/lwaddicor/gittreemux/internal/tmux"
-	"github.com/lwaddicor/gittreemux/internal/workmux"
+	"github.com/lwaddicor/workmux-explorer/internal/exec"
+	"github.com/lwaddicor/workmux-explorer/internal/tmux"
+	"github.com/lwaddicor/workmux-explorer/internal/workmux"
 )
 
 // Options configures a Discoverer. Zero values fall back to sensible defaults.
