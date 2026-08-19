@@ -9,7 +9,7 @@ context: |
   Development happens in workmux worktrees; work finishes via git push + PR
   (never `workmux merge`). The main worktree owns port 8787; run worktree
   instances on 8788+ (serve -listen 127.0.0.1:8788).
-  Layout: cmd/gittreemux (CLI), internal/{api,discover,workmux,tmux,exec,actionlog}, web/.
+  Layout: cmd/workmux-explorer (CLI), internal/{api,discover,workmux,tmux,exec,actionlog}, web/.
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.

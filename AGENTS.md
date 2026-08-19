@@ -2,13 +2,13 @@
 
 ## Project
 
-gittreemux is a single, self-contained Go binary that surfaces every workmux
+workmux-explorer is a single, self-contained Go binary that surfaces every workmux
 worktree and agent on the machine as a local web dashboard (loopback by
 default), with actions (open/close/send/remove) from the browser.
 
 - Go 1.26, **stdlib only** — no external dependencies. Do not add any
   without explicit justification.
-- `cmd/gittreemux/` — CLI entrypoint (`serve`, `version`).
+- `cmd/workmux-explorer/` — CLI entrypoint (`serve`, `version`).
 - `internal/api` — JSON HTTP API + embedded web UI (Go 1.22+ method+path routing).
 - `internal/discover` — cross-project worktree discovery, caching.
 - `internal/workmux` — client for the `workmux` binary.
@@ -24,7 +24,7 @@ go build ./...          # build
 go test ./...           # test
 go vet ./...            # vet
 gofmt -l .              # must return nothing
-go run ./cmd/gittreemux serve   # run (defaults: 127.0.0.1:8787)
+go run ./cmd/workmux-explorer serve   # run (defaults: 127.0.0.1:8787)
 ```
 
 ## Conventional Commits (required)
@@ -78,7 +78,7 @@ window, named `wm-<handle>`).
   `workmux capture <handle>`, `workmux send <handle> "msg"`.
 - **Running the app** — the main worktree owns `127.0.0.1:8787`. When
   developing in a worktree, run your instance on a different port so both
-  work: `go run ./cmd/gittreemux serve -listen 127.0.0.1:8788` (8788+ for
+  work: `go run ./cmd/workmux-explorer serve -listen 127.0.0.1:8788` (8788+ for
   worktrees). Don't assume 8787 is free; don't kill the main instance.
 - **Finish (standard flow)** — commit with conventional commits,
   `git push -u origin HEAD`, open a PR (use the `open-pr` skill /

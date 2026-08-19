@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/lwaddicor/gittreemux/internal/exec"
+	"github.com/lwaddicor/workmux-explorer/internal/exec"
 )
 
 // ErrNotInstalled is returned when the workmux binary cannot be found.

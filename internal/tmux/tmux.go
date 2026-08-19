@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lwaddicor/gittreemux/internal/exec"
+	"github.com/lwaddicor/workmux-explorer/internal/exec"
 )
 
 // ErrNotRunning is returned when the tmux binary is missing or no server is

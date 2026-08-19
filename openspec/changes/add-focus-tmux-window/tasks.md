@@ -48,7 +48,7 @@
 - [x] 4.1 `gofmt -l .` returns nothing; `go vet ./...` passes; `go build ./...`
   succeeds.
 - [x] 4.2 `go test ./...` passes with no real tmux, network, or OS activation.
-- [x] 4.3 Manual smoke on a worktree port (`go run ./cmd/gittreemux serve -listen
+- [x] 4.3 Manual smoke on a worktree port (`go run ./cmd/workmux-explorer serve -listen
   127.0.0.1:8788`): click Focus on an open worktree and confirm the terminal
   comes to the front; confirm the best-effort notice appears when it cannot.
 

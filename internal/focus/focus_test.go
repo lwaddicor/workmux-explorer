@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lwaddicor/gittreemux/internal/exec"
+	"github.com/lwaddicor/workmux-explorer/internal/exec"
 )
 
 // fakeRunner returns canned output for tmux/ps/osascript and records every
