@@ -17,6 +17,7 @@ import (
 	"github.com/lwaddicor/workmux-explorer/internal/actionlog"
 	"github.com/lwaddicor/workmux-explorer/internal/api"
 	"github.com/lwaddicor/workmux-explorer/internal/discover"
+	"github.com/lwaddicor/workmux-explorer/internal/focus"
 	"github.com/lwaddicor/workmux-explorer/internal/workmux"
 )
 
@@ -91,7 +92,7 @@ func runServe(args []string) int {
 		Workmux:     client,
 	})
 
-	srv := &api.Server{Discoverer: disc, Workmux: client, Log: alc}
+	srv := &api.Server{Discoverer: disc, Workmux: client, Log: alc, Focus: focus.New()}
 	httpSrv := &http.Server{
 		Addr:              *listen,
 		Handler:           srv.Routes(),

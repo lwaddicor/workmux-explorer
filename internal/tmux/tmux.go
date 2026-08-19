@@ -20,12 +20,14 @@ type Pane struct {
 	Session     string
 	WindowIndex string
 	WindowName  string
-	Path        string
+	// ID is the tmux pane id, including its leading "%".
+	ID   string
+	Path string
 }
 
 // listFormat uses tabs as separators; a tab will not appear in any of the
 // fields we collect.
-const listFormat = "#{session_name}\t#{window_index}\t#{window_name}\t#{pane_current_path}"
+const listFormat = "#{session_name}\t#{window_index}\t#{window_name}\t#{pane_id}\t#{pane_current_path}"
 
 // ListPanes returns every pane across all tmux sessions.
 func ListPanes() ([]Pane, error) {
@@ -42,15 +44,16 @@ func ListPanes() ([]Pane, error) {
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "\t", 4)
-		if len(parts) != 4 {
+		parts := strings.SplitN(line, "\t", 5)
+		if len(parts) != 5 {
 			continue
 		}
 		panes = append(panes, Pane{
 			Session:     parts[0],
 			WindowIndex: parts[1],
 			WindowName:  parts[2],
-			Path:        parts[3],
+			ID:          parts[3],
+			Path:        parts[4],
 		})
 	}
 	return panes, nil
