@@ -4,11 +4,14 @@
 package workmux
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/lwaddicor/workmux-explorer/internal/exec"
 )
@@ -37,6 +40,9 @@ func ValidateName(name string) error {
 type Client struct {
 	// Bin is the workmux executable name or path. Defaults to "workmux".
 	Bin string
+	// Timeout bounds every workmux invocation. Zero means no deadline. A
+	// command that exceeds it is killed and reported as a timed-out error.
+	Timeout time.Duration
 }
 
 // New returns a Client using the workmux binary on PATH.
@@ -50,28 +56,38 @@ func (c *Client) bin() string {
 }
 
 func (c *Client) run(dir string, args ...string) exec.Result {
-	return exec.Run(dir, c.bin(), args...)
+	if c.Timeout <= 0 {
+		return exec.Run(dir, c.bin(), args...)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	return exec.RunCtx(ctx, dir, c.bin(), args...)
+}
+
+// runErr maps a failed run to a descriptive error, distinguishing a missing
+// binary from a timed-out read from a non-zero exit.
+func (c *Client) runErr(res exec.Result) error {
+	if res.Err != nil {
+		return ErrNotInstalled
+	}
+	if res.TimedOut {
+		return fmt.Errorf("timed out after %s", c.Timeout)
+	}
+	return fail(res)
 }
 
 // runOK executes a mutating command and reports success (nil) or a descriptive
 // error. It distinguishes a missing binary from a non-zero exit.
 func (c *Client) runOK(dir string, args ...string) error {
 	res := c.run(dir, args...)
-	if res.Err != nil {
-		return ErrNotInstalled
-	}
 	if !res.OK() {
-		return fail(res)
+		return c.runErr(res)
 	}
 	return nil
 }
 
-// fail maps a failed run to a descriptive error, distinguishing a missing
-// binary from a non-zero exit.
+// fail maps a failed run to a descriptive error from its output.
 func fail(res exec.Result) error {
-	if res.Err != nil {
-		return ErrNotInstalled
-	}
 	msg := strings.TrimSpace(res.Stderr)
 	if msg == "" {
 		msg = strings.TrimSpace(res.Stdout)
@@ -85,11 +101,8 @@ func fail(res exec.Result) error {
 // List returns every worktree workmux knows about for the project rooted at dir.
 func (c *Client) List(dir string) ([]Worktree, error) {
 	res := c.run(dir, "list", "--json")
-	if res.Err != nil {
-		return nil, ErrNotInstalled
-	}
 	if !res.OK() {
-		return nil, fail(res)
+		return nil, c.runErr(res)
 	}
 	return parseList([]byte(res.Stdout))
 }
@@ -97,11 +110,8 @@ func (c *Client) List(dir string) ([]Worktree, error) {
 // Status returns the active agents (with git state) for the project rooted at dir.
 func (c *Client) Status(dir string) ([]AgentStatus, error) {
 	res := c.run(dir, "status", "--json", "--git")
-	if res.Err != nil {
-		return nil, ErrNotInstalled
-	}
 	if !res.OK() {
-		return nil, fail(res)
+		return nil, c.runErr(res)
 	}
 	return parseStatus([]byte(res.Stdout))
 }
@@ -115,8 +125,23 @@ func parseList(b []byte) ([]Worktree, error) {
 	return wt, nil
 }
 
-// parseStatus decodes `workmux status --json --git` output.
+// statusPayload models `workmux status --json --git` output as emitted by
+// newer workmux (0.1.246+), which wraps the agent list in a top-level object.
+type statusPayload struct {
+	Agents []AgentStatus `json:"agents"`
+}
+
+// parseStatus decodes `workmux status --json --git` output, accepting both the
+// bare-array shape from older workmux and the wrapped object from 0.1.246+.
 func parseStatus(b []byte) ([]AgentStatus, error) {
+	trimmed := bytes.TrimLeft(b, " \t\r\n")
+	if len(trimmed) > 0 && trimmed[0] == '{' {
+		var sp statusPayload
+		if err := json.Unmarshal(b, &sp); err != nil {
+			return nil, fmt.Errorf("parse workmux status: %w", err)
+		}
+		return sp.Agents, nil
+	}
 	var st []AgentStatus
 	if err := json.Unmarshal(b, &st); err != nil {
 		return nil, fmt.Errorf("parse workmux status: %w", err)
@@ -130,11 +155,8 @@ func (c *Client) Capture(dir, name string) (string, error) {
 		return "", err
 	}
 	res := c.run(dir, "capture", name)
-	if res.Err != nil {
-		return "", ErrNotInstalled
-	}
 	if !res.OK() {
-		return "", fail(res)
+		return "", c.runErr(res)
 	}
 	return res.Stdout, nil
 }
@@ -182,11 +204,8 @@ func (c *Client) Send(dir, name, text string) error {
 // Version returns the workmux version string, or an error if it is missing.
 func (c *Client) Version() (string, error) {
 	res := c.run("", "--version")
-	if res.Err != nil {
-		return "", ErrNotInstalled
-	}
 	if !res.OK() {
-		return "", fail(res)
+		return "", c.runErr(res)
 	}
 	return strings.TrimSpace(res.Stdout), nil
 }

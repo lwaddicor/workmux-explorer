@@ -4,6 +4,7 @@
 package tmux
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -30,9 +31,13 @@ type Pane struct {
 const listFormat = "#{session_name}\t#{window_index}\t#{window_name}\t#{pane_id}\t#{pane_current_path}"
 
 // ListPanes returns every pane across all tmux sessions.
-func ListPanes() ([]Pane, error) {
-	res := exec.Run("", "tmux", "list-panes", "-s", "-F", listFormat)
-	if res.Err != nil {
+func ListPanes() ([]Pane, error) { return ListPanesCtx(context.Background()) }
+
+// ListPanesCtx returns every pane across all tmux sessions, running the query
+// under ctx so a wedged tmux server cannot outlive the caller's deadline.
+func ListPanesCtx(ctx context.Context) ([]Pane, error) {
+	res := exec.RunCtx(ctx, "", "tmux", "list-panes", "-s", "-F", listFormat)
+	if res.Err != nil || res.TimedOut {
 		return nil, ErrNotRunning
 	}
 	if !res.OK() {

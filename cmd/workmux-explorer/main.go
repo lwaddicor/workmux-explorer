@@ -57,7 +57,8 @@ func defaultFlagSet() *flag.FlagSet {
 	fs.String("listen", "127.0.0.1:8787", "host:port to bind (loopback by default)")
 	fs.String("prefix", "wm-", "workmux tmux window name prefix used for discovery")
 	fs.Int("concurrency", 8, "max concurrent project reads")
-	fs.Duration("cache-ttl", 2*time.Second, "per-project result cache TTL")
+	fs.Duration("cache-ttl", 5*time.Second, "per-project result cache TTL; keep it at or above the UI poll interval")
+	fs.Duration("timeout", 60*time.Second, "deadline applied to every workmux invocation and discovery probe")
 	fs.String("log", "", "optional action log file path (default: stderr)")
 	fs.String("workmux", "workmux", "path to the workmux binary")
 	return fs
@@ -68,12 +69,13 @@ func runServe(args []string) int {
 	listen := fs.String("listen", "127.0.0.1:8787", "host:port to bind (loopback by default)")
 	prefix := fs.String("prefix", "wm-", "workmux tmux window name prefix used for discovery")
 	concurrency := fs.Int("concurrency", 8, "max concurrent project reads")
-	cacheTTL := fs.Duration("cache-ttl", 2*time.Second, "per-project result cache TTL")
+	cacheTTL := fs.Duration("cache-ttl", 5*time.Second, "per-project result cache TTL; keep it at or above the UI poll interval")
+	timeout := fs.Duration("timeout", 60*time.Second, "deadline applied to every workmux invocation and discovery probe")
 	logPath := fs.String("log", "", "optional action log file path (default: stderr)")
 	wmBin := fs.String("workmux", "workmux", "path to the workmux binary")
 	fs.Parse(args)
 
-	client := &workmux.Client{Bin: *wmBin}
+	client := &workmux.Client{Bin: *wmBin, Timeout: *timeout}
 	if ver, err := client.Version(); err != nil {
 		log.Printf("warning: %v", err)
 	} else {

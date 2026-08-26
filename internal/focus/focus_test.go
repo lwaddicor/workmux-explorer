@@ -1,6 +1,7 @@
 package focus
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -9,12 +10,12 @@ import (
 
 // fakeRunner returns canned output for tmux/ps/osascript and records every
 // invocation so tests can assert on the exact argv (in particular the
-// osascript script).
+// osascript script). ps is served as one `ps -eo ppid=,pid=,comm=` table.
 type fakeRunner struct {
 	calls        []string
 	tmuxOut      string
 	tmuxExit     int
-	ps           map[string]string // pid -> "ppid<TAB>comm"
+	psTable      string // full output of `ps -eo ppid=,pid=,comm=`
 	osascriptOK  bool
 	osascriptOut string
 	osascriptErr string
@@ -26,11 +27,7 @@ func (f *fakeRunner) run(dir, name string, args ...string) exec.Result {
 	case "tmux":
 		return exec.Result{Stdout: f.tmuxOut, ExitCode: f.tmuxExit}
 	case "ps":
-		pid := args[len(args)-1]
-		if v, ok := f.ps[pid]; ok {
-			return exec.Result{Stdout: v + "\n", ExitCode: 0}
-		}
-		return exec.Result{Stderr: "ps: " + pid + ": No such process", ExitCode: 1}
+		return exec.Result{Stdout: f.psTable + "\n", ExitCode: 0}
 	case "osascript":
 		if f.osascriptOK {
 			return exec.Result{Stdout: f.osascriptOut, ExitCode: 0}
@@ -58,6 +55,15 @@ func (f *fakeRunner) callWith(needle string) bool {
 	return false
 }
 
+// psRow formats one line of `ps -eo ppid=,pid=,comm=` the way macOS prints it:
+// right-justified numbers and whitespace before the comm (which may be a full
+// executable path).
+func psRow(ppid, pid int, comm string) string {
+	return fmt.Sprintf("%6d%6d %s", ppid, pid, comm)
+}
+
+func psTable(rows ...string) string { return strings.Join(rows, "\n") }
+
 // chain builds a ps table where pid -> ppid,comm forms a chain that terminates
 // at the app whose parent is launchd (pid 1).
 func TestActivateSessionDetectsAndActivatesTerminal(t *testing.T) {
@@ -65,11 +71,11 @@ func TestActivateSessionDetectsAndActivatesTerminal(t *testing.T) {
 		tmuxOut: "1000\n",
 		// Real macOS ps output is right-justified and space-separated, not
 		// tab-separated, so the parser must be whitespace-tolerant.
-		ps: map[string]string{
-			"1000": "     2000 tmux",
-			"2000": "     3000 zsh",
-			"3000": "        1 Terminal",
-		},
+		psTable: psTable(
+			psRow(2000, 1000, "tmux"),
+			psRow(3000, 2000, "zsh"),
+			psRow(1, 3000, "Terminal"),
+		),
 		osascriptOK: true,
 	}
 	a := &Activator{Run: fr.run, GOOS: "darwin"}
@@ -84,14 +90,21 @@ func TestActivateSessionDetectsAndActivatesTerminal(t *testing.T) {
 	if !fr.callWith(`tell application "Terminal" to activate`) {
 		t.Errorf("expected osascript to activate Terminal; calls: %v", fr.calls)
 	}
+	n := 0
+	for _, c := range fr.calls {
+		if strings.HasPrefix(c, "ps ") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("the parent-chain walk must read one ps table snapshot, got %d ps calls", n)
+	}
 }
 
 func TestActivateSessionMapsKittyComm(t *testing.T) {
 	fr := &fakeRunner{
-		tmuxOut: "42\n",
-		ps: map[string]string{
-			"42": "1\tkitty",
-		},
+		tmuxOut:     "42\n",
+		psTable:     psTable(psRow(1, 42, "kitty")),
 		osascriptOK: true,
 	}
 	a := &Activator{Run: fr.run, GOOS: "darwin"}
@@ -110,10 +123,10 @@ func TestActivateSessionFullAppPath(t *testing.T) {
 	// base name must be mapped to the app bundle name for AppleScript.
 	fr := &fakeRunner{
 		tmuxOut: "1000\n",
-		ps: map[string]string{
-			"1000": "     2000 tmux",
-			"2000": "        1 /Applications/iTerm.app/Contents/MacOS/iTerm2",
-		},
+		psTable: psTable(
+			psRow(2000, 1000, "tmux"),
+			psRow(1, 2000, "/Applications/iTerm.app/Contents/MacOS/iTerm2"),
+		),
 		osascriptOK: true,
 	}
 	a := &Activator{Run: fr.run, GOOS: "darwin"}
@@ -130,10 +143,10 @@ func TestActivateSessionFullAppPath(t *testing.T) {
 func TestActivateSessionSelectsITermWindowByTty(t *testing.T) {
 	fr := &fakeRunner{
 		tmuxOut: "1000\t/dev/ttys001\n",
-		ps: map[string]string{
-			"1000": "     2000 tmux",
-			"2000": "        1 /Applications/iTerm.app/Contents/MacOS/iTerm2",
-		},
+		psTable: psTable(
+			psRow(2000, 1000, "tmux"),
+			psRow(1, 2000, "/Applications/iTerm.app/Contents/MacOS/iTerm2"),
+		),
 		osascriptOK: true,
 	}
 	a := &Activator{Run: fr.run, GOOS: "darwin"}
@@ -159,10 +172,10 @@ func TestActivateSessionSelectsITermWindowByTty(t *testing.T) {
 func TestActivateSessionSelectsITermTabByPaneID(t *testing.T) {
 	fr := &fakeRunner{
 		tmuxOut: "1000\t/dev/ttys001\n",
-		ps: map[string]string{
-			"1000": "     2000 tmux",
-			"2000": "        1 /Applications/iTerm.app/Contents/MacOS/iTerm2",
-		},
+		psTable: psTable(
+			psRow(2000, 1000, "tmux"),
+			psRow(1, 2000, "/Applications/iTerm.app/Contents/MacOS/iTerm2"),
+		),
 		osascriptOK:  true,
 		osascriptOut: "pane\n",
 	}
@@ -192,10 +205,10 @@ func TestActivateSessionNotesUnfoundITermTab(t *testing.T) {
 	// client attached may have no tab at all; the app still comes forward.
 	fr := &fakeRunner{
 		tmuxOut: "1000\t/dev/ttys001\n",
-		ps: map[string]string{
-			"1000": "     2000 tmux",
-			"2000": "        1 /Applications/iTerm.app/Contents/MacOS/iTerm2",
-		},
+		psTable: psTable(
+			psRow(2000, 1000, "tmux"),
+			psRow(1, 2000, "/Applications/iTerm.app/Contents/MacOS/iTerm2"),
+		),
 		osascriptOK:  true,
 		osascriptOut: "app\n",
 	}
@@ -213,10 +226,10 @@ func TestActivateSessionNotesUnfoundITermTab(t *testing.T) {
 func TestActivateSessionIgnoresPaneIDForOtherTerminals(t *testing.T) {
 	fr := &fakeRunner{
 		tmuxOut: "1000\t/dev/ttys001\n",
-		ps: map[string]string{
-			"1000": "     2000 tmux",
-			"2000": "        1 Ghostty",
-		},
+		psTable: psTable(
+			psRow(2000, 1000, "tmux"),
+			psRow(1, 2000, "Ghostty"),
+		),
 		osascriptOK: true,
 	}
 	a := &Activator{Run: fr.run, GOOS: "darwin"}
@@ -280,10 +293,8 @@ func TestActivateSessionMalformedPID(t *testing.T) {
 
 func TestActivateSessionUnknownAppFallback(t *testing.T) {
 	fr := &fakeRunner{
-		tmuxOut: "7\n",
-		ps: map[string]string{
-			"7": "1\tmyterm",
-		},
+		tmuxOut:     "7\n",
+		psTable:     psTable(psRow(1, 7, "myterm")),
 		osascriptOK: true,
 	}
 	a := &Activator{Run: fr.run, GOOS: "darwin"}
@@ -299,10 +310,8 @@ func TestActivateSessionUnknownAppFallback(t *testing.T) {
 
 func TestActivateSessionEscapesAppQuotes(t *testing.T) {
 	fr := &fakeRunner{
-		tmuxOut: "8\n",
-		ps: map[string]string{
-			"8": "1\tWe\"ird",
-		},
+		tmuxOut:     "8\n",
+		psTable:     psTable(psRow(1, 8, `We"ird`)),
 		osascriptOK: true,
 	}
 	a := &Activator{Run: fr.run, GOOS: "darwin"}
@@ -318,10 +327,8 @@ func TestActivateSessionEscapesAppQuotes(t *testing.T) {
 
 func TestActivateSessionOsascriptFailure(t *testing.T) {
 	fr := &fakeRunner{
-		tmuxOut: "1000\n",
-		ps: map[string]string{
-			"1000": "1\tTerminal",
-		},
+		tmuxOut:      "1000\n",
+		psTable:      psTable(psRow(1, 1000, "Terminal")),
 		osascriptOK:  false,
 		osascriptErr: "1:3: execution error: not authorized",
 	}
@@ -333,5 +340,31 @@ func TestActivateSessionOsascriptFailure(t *testing.T) {
 	}
 	if !strings.Contains(res.Note, "could not bring Terminal to the front") {
 		t.Errorf("expected a descriptive note, got %q", res.Note)
+	}
+}
+
+// TestActivateSessionDepthBound verifies that a parent chain which does not
+// reach launchd within maxAncestorDepth cannot loop forever: the walk gives up
+// and reports that no terminal could be identified.
+func TestActivateSessionDepthBound(t *testing.T) {
+	n := maxAncestorDepth + 8
+	rows := make([]string, n)
+	for i := 0; i < n; i++ {
+		pid := 100 + i
+		ppid := 100 + (i+1)%n // a cycle: no process is a child of launchd
+		rows[i] = psRow(ppid, pid, "sh")
+	}
+	fr := &fakeRunner{tmuxOut: fmt.Sprintf("%d\n", 100+n/2), psTable: psTable(rows...)}
+	a := &Activator{Run: fr.run, GOOS: "darwin"}
+
+	res := a.ActivateSession("0", "")
+	if res.Activated {
+		t.Fatalf("expected no activation for an unresolvable parent chain")
+	}
+	if !strings.Contains(res.Note, "could not identify the terminal application") {
+		t.Errorf("expected the identification note, got %q", res.Note)
+	}
+	if fr.called("osascript") {
+		t.Errorf("must not attempt activation when the terminal cannot be identified")
 	}
 }

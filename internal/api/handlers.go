@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strings"
 
 	"github.com/lwaddicor/workmux-explorer/internal/focus"
@@ -13,17 +12,10 @@ import (
 	"github.com/lwaddicor/workmux-explorer/internal/workmux"
 )
 
-// findProject locates a project by its name (basename) or root path in a fresh
-// inventory.
+// findProject resolves a project by its name (basename) or root path with a
+// scoped read: only the addressed project is re-read, never the whole machine.
 func (s *Server) findProject(ctx context.Context, name string) (*workmux.Project, error) {
-	inv := s.Discoverer.Inventory(ctx)
-	for i := range inv.Projects {
-		p := &inv.Projects[i]
-		if p.Name == name || p.Root == name || filepath.Base(p.Root) == name {
-			return p, nil
-		}
-	}
-	return nil, fmt.Errorf("project %q not found", name)
+	return s.Discoverer.Project(ctx, name)
 }
 
 func getWorktree(p *workmux.Project, handle string) (*workmux.Worktree, bool) {
@@ -38,6 +30,17 @@ func getWorktree(p *workmux.Project, handle string) (*workmux.Worktree, bool) {
 // handleProjects returns the cross-project inventory.
 func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.Discoverer.Inventory(r.Context()))
+}
+
+// handleProject returns the unified record of one addressed project without
+// building the full cross-project inventory.
+func (s *Server) handleProject(w http.ResponseWriter, r *http.Request) {
+	p, err := s.findProject(r.Context(), r.PathValue("project"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"project": p})
 }
 
 // handleWorktree returns a single worktree record within a project.
