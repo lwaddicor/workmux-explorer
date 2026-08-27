@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"os/exec"
-	"syscall"
 	"time"
 )
 
@@ -55,17 +54,7 @@ func RunCtx(ctx context.Context, dir string, name string, args ...string) Result
 	if dir != "" {
 		cmd.Dir = dir
 	}
-	// The command runs in its own process group so a deadline expiry can kill
-	// every descendant (e.g. a git child of workmux), not just the direct
-	// process; an orphaned grandchild would otherwise keep our I/O pipes open
-	// and outlive the caller's query.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if cmd.Process == nil {
-			return nil
-		}
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
+	configureDeadlineKill(cmd)
 	cmd.WaitDelay = waitDelay
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out

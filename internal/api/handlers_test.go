@@ -18,13 +18,20 @@ import (
 
 // fakeProjectSource returns a fixed inventory so handlers can be tested
 // without a real tmux server, git repository, or workmux reads. Its Project
-// method mirrors the scoped lookup's matching rule (name, root path, base).
+// method mirrors the scoped lookup's matching rule (name, root path, base);
+// Invalidate records its calls so tests can assert the post-mutation
+// invalidation contract.
 type fakeProjectSource struct {
-	inv *workmux.Inventory
+	inv         *workmux.Inventory
+	invalidated []string
 }
 
 func (f *fakeProjectSource) Inventory(context.Context) *workmux.Inventory {
 	return f.inv
+}
+
+func (f *fakeProjectSource) Invalidate(root string) {
+	f.invalidated = append(f.invalidated, root)
 }
 
 func (f *fakeProjectSource) Project(_ context.Context, name string) (*workmux.Project, error) {
@@ -188,5 +195,61 @@ func TestHandleFocusBestEffort(t *testing.T) {
 	}
 	if note, _ := body["note"].(string); note == "" {
 		t.Errorf("note should be set when activation is not performed")
+	}
+}
+
+func postAction(t *testing.T, s *Server, action string, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/projects/demo/worktrees/feat-x/"+action, strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	s.Routes().ServeHTTP(rr, req)
+	return rr
+}
+
+// TestRemoveInvalidatesProject verifies that a successful remove drops the
+// addressed project's cached record, so the UI's post-action reconciliation
+// reads the post-removal state rather than a fresh copy of the pre-removal
+// one.
+func TestRemoveInvalidatesProject(t *testing.T) {
+	root := t.TempDir()
+	s, _ := newTestServer(t, testInventory(true, "0", root), 0, nil)
+	fake := s.Discoverer.(*fakeProjectSource)
+
+	rr := postAction(t, s, "remove", `{"confirmed": true}`)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a confirmed remove, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(fake.invalidated) != 1 || fake.invalidated[0] != root {
+		t.Errorf("a successful remove must invalidate the project's cached record, got %v (want [%s])", fake.invalidated, root)
+	}
+}
+
+// TestRemoveFailureKeepsCache verifies a failed remove leaves the cache intact:
+// the record still matches reality, so re-reading it is wasted work.
+func TestRemoveFailureKeepsCache(t *testing.T) {
+	root := t.TempDir()
+	s, _ := newTestServer(t, testInventory(true, "0", root), 1, nil)
+	fake := s.Discoverer.(*fakeProjectSource)
+
+	rr := postAction(t, s, "remove", `{"confirmed": true}`)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 for a failing remove, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(fake.invalidated) != 0 {
+		t.Errorf("a failed remove must not invalidate the cached record, got %v", fake.invalidated)
+	}
+}
+
+func TestOpenInvalidatesProject(t *testing.T) {
+	root := t.TempDir()
+	s, _ := newTestServer(t, testInventory(false, "0", root), 0, nil)
+	fake := s.Discoverer.(*fakeProjectSource)
+
+	rr := postAction(t, s, "open", "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for an open, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(fake.invalidated) != 1 || fake.invalidated[0] != root {
+		t.Errorf("a successful open must invalidate the project's cached record, got %v (want [%s])", fake.invalidated, root)
 	}
 }

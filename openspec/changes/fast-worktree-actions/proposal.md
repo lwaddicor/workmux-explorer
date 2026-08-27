@@ -44,8 +44,10 @@ not depend on the read latency of every other project.
   addressed project and complete without waiting for reads of unrelated projects; a
   single-project record is retrievable over the API.
 - `worktree-inventory`: per-project reads are bounded in time — a read that exceeds its
-  deadline is flagged on that project instead of blocking the whole inventory, and
-  repeated queries reuse recent results (roots, version, per-project) briefly.
+  deadline is flagged on that project instead of blocking the whole inventory, repeated
+  queries reuse recent results (roots, version, per-project) briefly, and a successful
+  mutation invalidates the addressed project's cached record so post-action reads
+  reflect the new state.
 - `web-dashboard`: after an action, the grid reflects the change immediately for the
   affected worktree and reconciles via a targeted refresh, without waiting for a full
   machine-wide rescan; polling continues to reflect live state as before.

@@ -14,11 +14,15 @@ import (
 )
 
 // projectSource abstracts project discovery so handlers can be tested with a
-// fixed snapshot: full inventories and scoped single-project reads alike.
-// *discover.Discoverer satisfies it.
+// fixed snapshot: full inventories and scoped single-project reads alike, plus
+// the invalidation a successful mutation triggers. *discover.Discoverer
+// satisfies it.
 type projectSource interface {
 	Inventory(ctx context.Context) *workmux.Inventory
 	Project(ctx context.Context, name string) (*workmux.Project, error)
+	// Invalidate drops the cached record of the project rooted at root so the
+	// next read re-reads it, after an action has mutated it.
+	Invalidate(root string)
 }
 
 // Server holds the collaborators shared by all handlers.

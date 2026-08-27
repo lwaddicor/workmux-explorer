@@ -52,7 +52,13 @@ See proposal.md for motivation and measurements. The relevant current state:
   degrading permanently, while still bounding what used to be unbounded waits. The focus
   activation chain (tmux/ps/osascript) uses a fixed internal 15 s deadline regardless of
   the flag — macOS automation-permission prompts can block `osascript` until a human
-  answers, and a focus click should not wait a full minute for that.
+  answers, and a focus click should not wait a full minute for that. On Unix the
+  deadline kill targets the command's own process group (a fresh `Setpgid` group,
+  SIGKILL on expiry) so no descendant outlives the query; on platforms without
+  process groups the direct process is killed, and the exec package keeps
+  cross-compiling. The focus fallback pane scan (`tmux list-panes` in `handleFocus`)
+  runs under the request context with the same fixed 15 s bound, so a wedged tmux
+  server cannot hang a focus click either.
 
 - **Scoped project read in discover.** New method on `*Discoverer`,
   `Project(ctx context.Context, name string) (*workmux.Project, error)`: (1) match
@@ -73,6 +79,15 @@ See proposal.md for motivation and measurements. The relevant current state:
   Bump the default `-cache-ttl` from 2 s to 5 s — it must not be shorter than the UI's
   poll interval or actions will always miss; the flag already exists and users can tune
   both sides independently.
+- **Post-mutation invalidation.** A successful remove/open/close drops the addressed
+  project's cached record before the handler responds (a new `Discoverer.Invalidate`,
+  exposed on the `projectSource` seam the handlers use). Without it the UI's post-action
+  reconciliation `GET` is answered from the still-fresh pre-action snapshot: with the
+  default 5 s TTL and 4 s poll a poll that ran moments before the action keeps a removed
+  worktree's card resurrected — and a window-state badge reverted — for up to the TTL,
+  deterministically, so the targeted fetch that is supposed to confirm the action instead
+  undoes the visible change. Time-based reuse stays in force for ordinary reads; a
+  mutation invalidates on top of the TTL (see the inventory delta spec).
 
 - **Single-project API endpoint.** New route `GET /api/projects/{project}` →
   `handleProject` using `Discoverer.Project`; returns `{ "project": <Project> }` (same
@@ -84,10 +99,15 @@ See proposal.md for motivation and measurements. The relevant current state:
 - **Instant post-action UI update.** In `web/app.js`: on a successful action, mutate
   `lastInv` in memory (remove: drop the worktree record; open/close/focus/send: nothing
   structural) and re-render immediately — no network round-trip for the visible change.
-  Then fetch the single-project endpoint and merge that project's fresh record into
-  `lastInv`, re-rendering again so server truth wins (if remove raced, the card returns;
-  if the project vanished entirely, drop it from the sidebar and select the next).
-  Background full-inventory polling is untouched. No new dependencies or build step.
+   Then fetch the single-project endpoint and merge that project's fresh record into
+   `lastInv`, re-rendering again so server truth wins. The merge and the 404-drop match
+   the existing row by root (falling back to name), so two repositories sharing a base
+   name cannot splice into each other's row. The fresh record is post-mutation because
+   the server invalidates the project's cache on success, so a removed card does not
+   return from the reconciliation; a card re-appears only if the removal genuinely raced
+   with something restoring the worktree, and a fully vanished project is dropped from
+   the sidebar with selection falling through to the next. Background full-inventory
+   polling is untouched. No new dependencies or build step.
 
 - **One `ps` snapshot for the focus tree walk.** `topLevelComm` runs a single
   `ps -eo ppid=,pid,comm=` table read once and walks parent links in memory under the

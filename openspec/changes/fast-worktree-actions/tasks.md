@@ -35,3 +35,11 @@
 
 - [x] 7.1 `go build ./...`, `go vet ./...`, `gofmt -l .` (empty), `go test ./...` all clean
 - [x] 7.2 Live smoke on a spare port (`serve -listen 127.0.0.1:8788`): time `GET /api/projects/{project}` and an action against one project while the slowest repo is present — confirm scoped endpoints return in seconds, full inventory stays bounded by `-timeout`, and no workmux subprocess outlives its deadline
+
+## 8. Review fixes
+
+- [x] 8.1 Drop the addressed project's cached record after a successful remove/open/close (`Discoverer.Invalidate`; `Invalidate` added to the `projectSource` seam and its test fake; the remove and open/close handlers call it only on success) so the UI's post-action reconciliation reads post-mutation state instead of a still-fresh pre-mutation snapshot that resurrected removed worktrees for up to the TTL — unit-tested in discover (force re-read within TTL) and api (invalidation on success, none on failure)
+- [x] 8.2 Restore cross-platform builds of `internal/exec`: the process-group deadline kill moved behind `//go:build unix` with a no-op fallback, so `GOOS=windows go build ./...` passes again (the unconditional `Setpgid`/`syscall.Kill` broke Windows)
+- [x] 8.3 Bound the focus fallback's `tmux list-panes` scan with the request context plus a fixed 15 s internal deadline, so a wedged tmux server cannot hang a focus request
+- [x] 8.4 `tmux.ListPanesCtx` accepts a query that exits 0 even when the deadline fired in the same instant instead of discarding the valid output as `ErrNotRunning`; first hermetic tests for the tmux package (parse, no-server, timeout)
+- [x] 8.5 The web UI matches the reconciled row by project root (name fallback) so two repositories sharing a base name cannot splice into each other's row

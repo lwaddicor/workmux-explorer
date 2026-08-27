@@ -5,7 +5,7 @@
 // project does not fail the whole inventory. Reads are bounded by deadlines: a
 // wedged probe or project degrades to an error on that scope instead of
 // outliving its query, and recent results (roots, version, per-project) are
-// reused briefly within the cache TTL.
+// reused briefly within the cache TTL, or until invalidated after a mutation.
 package discover
 
 import (
@@ -228,6 +228,20 @@ func (d *Discoverer) store(root string, p workmux.Project) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.cache[root] = cacheEntry{at: time.Now(), project: p}
+}
+
+// Invalidate drops the cached record of the project rooted at root so the next
+// read re-reads it. Callers invoke it after a successful mutation (remove,
+// open, close): time-based staleness alone would keep serving the
+// pre-mutation snapshot until the TTL elapses. An empty or unknown root is a
+// no-op.
+func (d *Discoverer) Invalidate(root string) {
+	if root == "" {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.cache, root)
 }
 
 // matchRoot reports whether the project rooted at root is addressed by name —

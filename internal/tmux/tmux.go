@@ -34,12 +34,11 @@ const listFormat = "#{session_name}\t#{window_index}\t#{window_name}\t#{pane_id}
 func ListPanes() ([]Pane, error) { return ListPanesCtx(context.Background()) }
 
 // ListPanesCtx returns every pane across all tmux sessions, running the query
-// under ctx so a wedged tmux server cannot outlive the caller's deadline.
+// under ctx so a wedged tmux server cannot outlive the caller's deadline. A
+// query that exits 0 is accepted even when the deadline fired in the same
+// instant, so valid output is not thrown away by the race.
 func ListPanesCtx(ctx context.Context) ([]Pane, error) {
 	res := exec.RunCtx(ctx, "", "tmux", "list-panes", "-s", "-F", listFormat)
-	if res.Err != nil || res.TimedOut {
-		return nil, ErrNotRunning
-	}
 	if !res.OK() {
 		return nil, ErrNotRunning
 	}

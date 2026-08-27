@@ -236,16 +236,22 @@ function findProjectRecord(name) {
 
 // reconcileProject fetches only the addressed project's fresh record and merges
 // it into lastInv, re-rendering so server truth wins over any optimistic edit.
-// A 404 means the project is no longer discovered: drop it from the view and let
-// selection fall through to another project. Any other failure keeps the current
-// view; background polling restores truth.
+// Rows are matched by root, with the name as fallback, so two repositories
+// sharing a base name cannot splice into each other's row. A 404 means the
+// project is no longer discovered: drop it from the view and let selection fall
+// through to another project. Any other failure keeps the current view;
+// background polling restores truth.
 async function reconcileProject(projectName) {
+  const row = findProjectRecord(projectName);
+  const root = row && row.root;
   try {
     const data = await api(`/api/projects/${enc(projectName)}`);
     if (!data || !data.project || !lastInv) return;
     const fresh = data.project;
     const projects = lastInv.projects;
-    const idx = projects.findIndex((p) => p.name === fresh.name);
+    const idx = root
+      ? projects.findIndex((p) => p.root === root)
+      : projects.findIndex((p) => p.name === fresh.name);
     if (idx >= 0) {
       projects[idx] = Object.assign({}, projects[idx], fresh);
     } else {
@@ -256,7 +262,9 @@ async function reconcileProject(projectName) {
   } catch (e) {
     if (!lastInv || !e.status || e.status !== 404) return;
     const projects = lastInv.projects;
-    const idx = projects.findIndex((p) => p.name === projectName);
+    const idx = root
+      ? projects.findIndex((p) => p.root === root)
+      : projects.findIndex((p) => p.name === projectName);
     if (idx < 0) return;
     projects.splice(idx, 1);
     render(lastInv);

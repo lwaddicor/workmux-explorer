@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/lwaddicor/workmux-explorer/internal/focus"
 	"github.com/lwaddicor/workmux-explorer/internal/tmux"
@@ -126,6 +127,7 @@ func (s *Server) doAction(w http.ResponseWriter, r *http.Request, action string)
 		writeErr(w, http.StatusBadGateway, runErr)
 		return
 	}
+	s.Discoverer.Invalidate(p.Root)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "action": action, "project": p.Name, "handle": handle})
 }
 
@@ -163,7 +165,7 @@ func (s *Server) handleFocus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, paneID := resolveFocusTarget(wt, handle)
+	session, paneID := resolveFocusTarget(r.Context(), wt, handle)
 	var res focus.Result
 	if session != "" {
 		res = s.focusActivator().ActivateSession(session, paneID)
@@ -183,17 +185,23 @@ func (s *Server) handleFocus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// focusScanTimeout bounds the fallback pane scan, in the same spirit as the
+// activation deadline: a wedged tmux server must not hang the focus request.
+const focusScanTimeout = 15 * time.Second
+
 // resolveFocusTarget determines the tmux session to activate for a worktree and
 // a pane id within its window, which iTerm2 needs to identify the tab to
 // surface. It prefers the worktree's agent session and falls back to matching
-// the workmux window name against live panes. The session is empty when no
-// session can be determined; the pane id is empty when only the session is
-// known.
-func resolveFocusTarget(wt *workmux.Worktree, handle string) (session, paneID string) {
+// the workmux window name against live panes under ctx, bounded by
+// focusScanTimeout. The session is empty when no session can be determined; the
+// pane id is empty when only the session is known.
+func resolveFocusTarget(ctx context.Context, wt *workmux.Worktree, handle string) (session, paneID string) {
 	if wt.Agent != nil && wt.Agent.Session != "" {
 		return wt.Agent.Session, wt.Agent.PaneID
 	}
-	panes, err := tmux.ListPanes()
+	scanCtx, cancel := context.WithTimeout(ctx, focusScanTimeout)
+	defer cancel()
+	panes, err := tmux.ListPanesCtx(scanCtx)
 	if err != nil {
 		return "", ""
 	}
@@ -300,6 +308,7 @@ func (s *Server) handleRemove(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, runErr)
 		return
 	}
+	s.Discoverer.Invalidate(p.Root)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "action": "remove", "project": p.Name, "handle": handle})
 }
 

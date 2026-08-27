@@ -136,6 +136,30 @@ func TestProjectStaleCacheRereadsOnce(t *testing.T) {
 	}
 }
 
+// TestInvalidateForcesReread verifies a post-mutation Invalidate drops the
+// cached record: the next scoped read re-reads the root even though the entry
+// is still fresh under the TTL.
+func TestInvalidateForcesReread(t *testing.T) {
+	d, logPath, root := newStubbed(t, time.Hour, "")
+
+	if _, err := d.Project(context.Background(), base(t, root)); err != nil {
+		t.Fatalf("first Project: %v", err)
+	}
+	if n := callCount(t, logPath, "list"); n != 1 {
+		t.Fatalf("expected one list call after the first read, got %d", n)
+	}
+
+	d.Invalidate(root)
+	if _, err := d.Project(context.Background(), base(t, root)); err != nil {
+		t.Fatalf("second Project: %v", err)
+	}
+	if n := callCount(t, logPath, "list"); n != 2 {
+		t.Errorf("invalidation must force a re-read even within the TTL (list calls = %d)", n)
+	}
+
+	d.Invalidate("") // a no-op that must not panic
+}
+
 // TestProjectUnknownErrors verifies an address matching no discovered or
 // cached project yields a not-found error and never reads anything.
 func TestProjectUnknownErrors(t *testing.T) {
