@@ -5,25 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/lwaddicor/workmux-explorer/internal/focus"
 	"github.com/lwaddicor/workmux-explorer/internal/tmux"
 	"github.com/lwaddicor/workmux-explorer/internal/workmux"
 )
 
-// findProject locates a project by its name (basename) or root path in a fresh
-// inventory.
+// findProject resolves a project by its name (basename) or root path with a
+// scoped read: only the addressed project is re-read, never the whole machine.
 func (s *Server) findProject(ctx context.Context, name string) (*workmux.Project, error) {
-	inv := s.Discoverer.Inventory(ctx)
-	for i := range inv.Projects {
-		p := &inv.Projects[i]
-		if p.Name == name || p.Root == name || filepath.Base(p.Root) == name {
-			return p, nil
-		}
-	}
-	return nil, fmt.Errorf("project %q not found", name)
+	return s.Discoverer.Project(ctx, name)
 }
 
 func getWorktree(p *workmux.Project, handle string) (*workmux.Worktree, bool) {
@@ -38,6 +31,17 @@ func getWorktree(p *workmux.Project, handle string) (*workmux.Worktree, bool) {
 // handleProjects returns the cross-project inventory.
 func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.Discoverer.Inventory(r.Context()))
+}
+
+// handleProject returns the unified record of one addressed project without
+// building the full cross-project inventory.
+func (s *Server) handleProject(w http.ResponseWriter, r *http.Request) {
+	p, err := s.findProject(r.Context(), r.PathValue("project"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"project": p})
 }
 
 // handleWorktree returns a single worktree record within a project.
@@ -123,6 +127,7 @@ func (s *Server) doAction(w http.ResponseWriter, r *http.Request, action string)
 		writeErr(w, http.StatusBadGateway, runErr)
 		return
 	}
+	s.Discoverer.Invalidate(p.Root)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "action": action, "project": p.Name, "handle": handle})
 }
 
@@ -160,7 +165,7 @@ func (s *Server) handleFocus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, paneID := resolveFocusTarget(wt, handle)
+	session, paneID := resolveFocusTarget(r.Context(), wt, handle)
 	var res focus.Result
 	if session != "" {
 		res = s.focusActivator().ActivateSession(session, paneID)
@@ -180,17 +185,23 @@ func (s *Server) handleFocus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// focusScanTimeout bounds the fallback pane scan, in the same spirit as the
+// activation deadline: a wedged tmux server must not hang the focus request.
+const focusScanTimeout = 15 * time.Second
+
 // resolveFocusTarget determines the tmux session to activate for a worktree and
 // a pane id within its window, which iTerm2 needs to identify the tab to
 // surface. It prefers the worktree's agent session and falls back to matching
-// the workmux window name against live panes. The session is empty when no
-// session can be determined; the pane id is empty when only the session is
-// known.
-func resolveFocusTarget(wt *workmux.Worktree, handle string) (session, paneID string) {
+// the workmux window name against live panes under ctx, bounded by
+// focusScanTimeout. The session is empty when no session can be determined; the
+// pane id is empty when only the session is known.
+func resolveFocusTarget(ctx context.Context, wt *workmux.Worktree, handle string) (session, paneID string) {
 	if wt.Agent != nil && wt.Agent.Session != "" {
 		return wt.Agent.Session, wt.Agent.PaneID
 	}
-	panes, err := tmux.ListPanes()
+	scanCtx, cancel := context.WithTimeout(ctx, focusScanTimeout)
+	defer cancel()
+	panes, err := tmux.ListPanesCtx(scanCtx)
 	if err != nil {
 		return "", ""
 	}
@@ -297,6 +308,7 @@ func (s *Server) handleRemove(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, runErr)
 		return
 	}
+	s.Discoverer.Invalidate(p.Root)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "action": "remove", "project": p.Name, "handle": handle})
 }
 

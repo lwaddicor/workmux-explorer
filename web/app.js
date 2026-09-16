@@ -15,8 +15,9 @@ async function api(path, opts = {}) {
   let data = null;
   try { data = await res.json(); } catch (e) { /* not json */ }
   if (!res.ok) {
-    const msg = (data && data.error) || res.statusText || ("HTTP " + res.status);
-    throw new Error(msg);
+    const err = new Error((data && data.error) || res.statusText || ("HTTP " + res.status));
+    err.status = res.status;
+    throw err;
   }
   return data;
 }
@@ -226,10 +227,55 @@ function togglePause() {
 }
 
 // ---------- actions ----------
+
+// findProjectRecord locates a project's record in the current inventory.
+function findProjectRecord(name) {
+  const projects = (lastInv && lastInv.projects) || [];
+  return projects.find((p) => p.name === name);
+}
+
+// reconcileProject fetches only the addressed project's fresh record and merges
+// it into lastInv, re-rendering so server truth wins over any optimistic edit.
+// Rows are matched by root, with the name as fallback, so two repositories
+// sharing a base name cannot splice into each other's row. A 404 means the
+// project is no longer discovered: drop it from the view and let selection fall
+// through to another project. Any other failure keeps the current view;
+// background polling restores truth.
+async function reconcileProject(projectName) {
+  const row = findProjectRecord(projectName);
+  const root = row && row.root;
+  try {
+    const data = await api(`/api/projects/${enc(projectName)}`);
+    if (!data || !data.project || !lastInv) return;
+    const fresh = data.project;
+    const projects = lastInv.projects;
+    const idx = root
+      ? projects.findIndex((p) => p.root === root)
+      : projects.findIndex((p) => p.name === fresh.name);
+    if (idx >= 0) {
+      projects[idx] = Object.assign({}, projects[idx], fresh);
+    } else {
+      projects.push(fresh);
+    }
+    render(lastInv);
+    $("last-updated").textContent = "updated " + new Date().toLocaleTimeString();
+  } catch (e) {
+    if (!lastInv || !e.status || e.status !== 404) return;
+    const projects = lastInv.projects;
+    const idx = root
+      ? projects.findIndex((p) => p.root === root)
+      : projects.findIndex((p) => p.name === projectName);
+    if (idx < 0) return;
+    projects.splice(idx, 1);
+    render(lastInv);
+  }
+}
+
 async function doAction(project, handle, action) {
   try {
     await api(`/api/projects/${enc(project)}/worktrees/${enc(handle)}/${action}`, { method: "POST" });
-    await load();
+    if (lastInv) render(lastInv);
+    await reconcileProject(project);
   } catch (e) {
     alert(action + " failed: " + e.message);
   }
@@ -241,7 +287,8 @@ async function doAction(project, handle, action) {
 async function doFocus(project, handle) {
   try {
     const data = await api(`/api/projects/${enc(project)}/worktrees/${enc(handle)}/focus`, { method: "POST" });
-    await load();
+    if (lastInv) render(lastInv);
+    await reconcileProject(project);
     if (data && data.note) {
       notify(data.note);
     }
@@ -280,7 +327,12 @@ async function removeSubmit(project, handle) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirmed: true }),
     });
-    await load();
+    const p = findProjectRecord(project);
+    if (p && p.worktrees) {
+      p.worktrees = p.worktrees.filter((w) => w.handle !== handle);
+    }
+    if (lastInv) render(lastInv);
+    await reconcileProject(project);
   } catch (e) {
     alert("remove failed: " + e.message);
   }
@@ -310,7 +362,8 @@ async function submitSend() {
       body: JSON.stringify({ text }),
     });
     closeSend();
-    await load();
+    if (lastInv) render(lastInv);
+    await reconcileProject(project);
   } catch (e) {
     errEl.textContent = e.message;
     errEl.classList.remove("hidden");

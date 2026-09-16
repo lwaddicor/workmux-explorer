@@ -1,10 +1,12 @@
 package workmux
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // sampleList is a captured `workmux list --json` payload (workmux 0.1.234),
@@ -121,6 +123,69 @@ func TestParseStatus(t *testing.T) {
 	}
 	if !got[1].Git.HasUnstaged {
 		t.Errorf("status 1: expected has_unstaged true")
+	}
+}
+
+// sampleStatusWrapped is a captured `workmux status --json --git` payload from
+// workmux 0.1.246+, which wraps the agent list in a top-level object.
+const sampleStatusWrapped = `{
+  "context": {"backend": "tmux", "instance": "/private/tmp/tmux-501/default"},
+  "scope": {"repository": "/opt/UnitySrc/repos/gittreemux", "targets": []},
+  "state_files_total": 3,
+  "reconciled_agent_count": 2,
+  "agents": [
+    {
+      "worktree": "feat-update-instantly-after-remove",
+      "branch": "feat/update-instantly-after-remove",
+      "status": "working",
+      "elapsed_secs": 136,
+      "title": "Fix workmux AgentStatus JSON unmarshal",
+      "pane_id": "%10",
+      "workdir": "/opt/UnitySrc/repos/gittreemux__worktrees/feat-update-instantly-after-remove",
+      "agent_kind": "opencode",
+      "session": "0",
+      "window_name": "wm-feat-update-instantly-after-remove",
+      "updated_ts": 1787746096,
+      "git": {"has_staged": false, "has_unstaged": true, "has_unmerged_commits": false}
+    },
+    {
+      "worktree": "chore-cleanup-rubbish",
+      "branch": "chore/cleanup-rubbish",
+      "status": "done",
+      "elapsed_secs": 577235,
+      "title": "OC | Git hooks workmux-status file inclusion",
+      "pane_id": "%24",
+      "workdir": "/opt/UnitySrc/repos/gittreemux__worktrees/chore-cleanup-rubbish",
+      "agent_kind": null,
+      "session": "0",
+      "window_name": "wm-chore-cleanup-rubbish",
+      "updated_ts": 1787168997,
+      "git": {"has_staged": false, "has_unstaged": false, "has_unmerged_commits": true}
+    }
+  ],
+  "target_errors": []
+}`
+
+func TestParseStatusWrapped(t *testing.T) {
+	got, err := parseStatus([]byte(sampleStatusWrapped))
+	if err != nil {
+		t.Fatalf("parseStatus returned error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 statuses, got %d", len(got))
+	}
+	s0 := got[0]
+	if s0.Worktree != "feat-update-instantly-after-remove" {
+		t.Errorf("status 0: unexpected worktree %q", s0.Worktree)
+	}
+	if s0.Status != StatusWorking {
+		t.Errorf("status 0: expected status working, got %q", s0.Status)
+	}
+	if !s0.Git.HasUnstaged {
+		t.Errorf("status 0: expected has_unstaged true")
+	}
+	if got[1].AgentKind != nil {
+		t.Errorf("status 1: expected nil agent_kind for null JSON, got %v", *got[1].AgentKind)
 	}
 }
 
@@ -244,5 +309,53 @@ func TestActionWrappersEmitExpectedArgv(t *testing.T) {
 		if lines[i] != want[i] {
 			t.Errorf("log line %d: got %q, want %q", i, lines[i], want[i])
 		}
+	}
+}
+
+// TestTimeoutKillsSlowCommand verifies that a wedged workmux invocation is
+// killed at the client timeout and surfaced as a timed-out error (not
+// "not installed"), without hanging the caller.
+func TestTimeoutKillsSlowCommand(t *testing.T) {
+	dir := t.TempDir()
+	binPath := filepath.Join(dir, "fake-workmux")
+	script := "#!/bin/sh\nsleep 30\n"
+	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake binary: %v", err)
+	}
+	c := &Client{Bin: binPath, Timeout: 200 * time.Millisecond}
+
+	start := time.Now()
+	if _, err := c.List(dir); err == nil {
+		t.Fatal("expected an error for a command that exceeds the timeout")
+	} else if errors.Is(err, ErrNotInstalled) {
+		t.Fatalf("a timed-out read must not be reported as %q", ErrNotInstalled)
+	} else if !strings.Contains(err.Error(), "timed out after") {
+		t.Fatalf("expected a timed-out error, got: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed >= 2*time.Second {
+		t.Errorf("List did not return promptly; the sleep was not killed (waited %s)", elapsed)
+	}
+
+	// The mutating path (runOK) maps timeouts identically.
+	start = time.Now()
+	err := c.Remove(dir, "h", true)
+	if err == nil || !strings.Contains(err.Error(), "timed out after") {
+		t.Fatalf("expected Remove to report a timeout, got: %v", err)
+	} else if errors.Is(err, ErrNotInstalled) {
+		t.Fatalf("a timed-out action must not be reported as %q", ErrNotInstalled)
+	}
+	if elapsed := time.Since(start); elapsed >= 2*time.Second {
+		t.Errorf("Remove did not return promptly; the sleep was not killed (waited %s)", elapsed)
+	}
+
+	// A zero timeout keeps the legacy unbounded behavior and must not report a
+	// timeout for a command that completes in time.
+	fast := filepath.Join(dir, "fast-workmux")
+	if err := os.WriteFile(fast, []byte("#!/bin/sh\necho 0.1.0\n"), 0o755); err != nil {
+		t.Fatalf("write fast binary: %v", err)
+	}
+	c2 := &Client{Bin: fast} // Timeout zero => no deadline
+	if v, err := c2.Version(); err != nil || !strings.Contains(v, "0.1.0") {
+		t.Errorf("zero-timeout Version should succeed, got %q, %v", v, err)
 	}
 }

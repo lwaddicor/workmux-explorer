@@ -6,11 +6,13 @@
 package focus
 
 import (
+	"context"
 	"fmt"
 	"path"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/lwaddicor/workmux-explorer/internal/exec"
 )
@@ -32,6 +34,13 @@ type Result struct {
 // maxAncestorDepth bounds the ps parent-chain walk so a malformed process
 // table cannot loop forever.
 const maxAncestorDepth = 64
+
+// activationTimeout bounds the whole focus chain — tmux client lookup, process
+// table read, and osascript — with a fixed internal deadline independent of any
+// server flag: macOS automation-permission prompts can block osascript until a
+// human answers, and a focus click must not wait for that. It applies to the
+// default runner; an injected Runner (tests) is called as-is.
+const activationTimeout = 15 * time.Second
 
 // knownApps maps a terminal's process comm (lower-cased) to the exact macOS
 // application name AppleScript can address. Unknown comms fall back to a
@@ -63,11 +72,13 @@ type Activator struct {
 // New returns an Activator that shells out via exec.Run on the host platform.
 func New() *Activator { return &Activator{} }
 
-func (a *Activator) run(name string, args ...string) exec.Result {
+// run executes a command under ctx when the default runner is in use; an
+// injected Runner does not take a context and is called as-is.
+func (a *Activator) run(ctx context.Context, name string, args ...string) exec.Result {
 	if a.Run != nil {
 		return a.Run("", name, args...)
 	}
-	return exec.Run("", name, args...)
+	return exec.RunCtx(ctx, "", name, args...)
 }
 
 func (a *Activator) platform() string {
@@ -90,7 +101,10 @@ func (a *Activator) ActivateSession(session, paneID string) Result {
 		return Result{Activated: false, Note: "no tmux session was provided, so no terminal could be activated"}
 	}
 
-	res := a.run("tmux", "list-clients", "-t", session, "-F", "#{client_pid}\t#{client_tty}")
+	ctx, cancel := context.WithTimeout(context.Background(), activationTimeout)
+	defer cancel()
+
+	res := a.run(ctx, "tmux", "list-clients", "-t", session, "-F", "#{client_pid}\t#{client_tty}")
 	if !res.OK() {
 		return Result{Activated: false, Note: "no terminal is attached to this tmux session (it appears to be detached)"}
 	}
@@ -99,14 +113,14 @@ func (a *Activator) ActivateSession(session, paneID string) Result {
 		return Result{Activated: false, Note: note}
 	}
 
-	comm, ok := a.topLevelComm(clientPID)
+	comm, ok := a.topLevelComm(ctx, clientPID)
 	if !ok {
 		return Result{Activated: false, Note: "could not identify the terminal application hosting this session"}
 	}
 
 	app := displayName(comm)
 	script := activationScript(app, tty, strings.TrimPrefix(strings.TrimSpace(paneID), "%"))
-	res = a.run("osascript", "-e", script)
+	res = a.run(ctx, "osascript", "-e", script)
 	if !res.OK() {
 		return Result{App: app, Activated: false, Note: "could not bring " + app + " to the front: " + commandDetail(res)}
 	}
@@ -146,46 +160,50 @@ func firstClient(out string) (pid int, tty string, note string, ok bool) {
 	return 0, "", "no terminal is attached to this tmux session (it appears to be detached)", false
 }
 
-// topLevelComm walks the process parent chain from pid until it reaches the
-// process whose parent is launchd (PID 1), returning that process's comm. That
-// is the top-level terminal application. ok=false when the chain cannot be
-// resolved.
-func (a *Activator) topLevelComm(pid int) (string, bool) {
-	current := pid
-	for i := 0; i < maxAncestorDepth; i++ {
-		res := a.run("ps", "-o", "ppid=,comm=", "-p", strconv.Itoa(current))
-		if !res.OK() {
-			return "", false
-		}
-		line := firstNonEmptyLine(res.Stdout)
-		if line == "" {
-			return "", false
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			return "", false
-		}
-		ppid := fields[0]
-		comm := strings.Join(fields[1:], " ")
-		if ppid == "1" {
-			return comm, true
-		}
-		next, err := strconv.Atoi(ppid)
-		if err != nil || next <= 0 {
-			return "", false
-		}
-		current = next
-	}
-	return "", false
+// procRow is one parsed process from a `ps -eo ppid=,pid=,comm=` table.
+type procRow struct {
+	ppid int
+	comm string
 }
 
-func firstNonEmptyLine(out string) string {
-	for _, line := range strings.Split(out, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			return line
-		}
+// topLevelComm walks the process parent chain from pid until it reaches the
+// process whose parent is launchd (PID 1), returning that process's comm. That
+// is the top-level terminal application. The walk reads one `ps -eo ppid=,pid=,comm=`
+// table snapshot and resolves parents in memory under maxAncestorDepth, so a
+// wedged or malformed table costs exactly one command. ok=false when the chain
+// cannot be resolved.
+func (a *Activator) topLevelComm(ctx context.Context, pid int) (string, bool) {
+	res := a.run(ctx, "ps", "-eo", "ppid=,pid=,comm=")
+	if !res.OK() {
+		return "", false
 	}
-	return ""
+
+	table := make(map[int]procRow)
+	for _, line := range strings.Split(res.Stdout, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		ppid, errPpid := strconv.Atoi(fields[0])
+		pid, errPid := strconv.Atoi(fields[1])
+		if errPpid != nil || errPid != nil {
+			continue
+		}
+		table[pid] = procRow{ppid: ppid, comm: strings.Join(fields[2:], " ")}
+	}
+
+	current := pid
+	for i := 0; i < maxAncestorDepth; i++ {
+		row, ok := table[current]
+		if !ok {
+			return "", false
+		}
+		if row.ppid == 1 {
+			return row.comm, true
+		}
+		current = row.ppid
+	}
+	return "", false
 }
 
 // displayName maps a process comm to its macOS application name, falling back

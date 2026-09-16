@@ -13,15 +13,21 @@ import (
 	"github.com/lwaddicor/workmux-explorer/web"
 )
 
-// inventoryProvider abstracts the cross-project inventory so handlers can be
-// tested with a fixed snapshot. *discover.Discoverer satisfies it.
-type inventoryProvider interface {
+// projectSource abstracts project discovery so handlers can be tested with a
+// fixed snapshot: full inventories and scoped single-project reads alike, plus
+// the invalidation a successful mutation triggers. *discover.Discoverer
+// satisfies it.
+type projectSource interface {
 	Inventory(ctx context.Context) *workmux.Inventory
+	Project(ctx context.Context, name string) (*workmux.Project, error)
+	// Invalidate drops the cached record of the project rooted at root so the
+	// next read re-reads it, after an action has mutated it.
+	Invalidate(root string)
 }
 
 // Server holds the collaborators shared by all handlers.
 type Server struct {
-	Discoverer inventoryProvider
+	Discoverer projectSource
 	Workmux    *workmux.Client
 	Log        *actionlog.Logger
 	// Focus activates the terminal hosting a focused worktree. When nil a
@@ -36,6 +42,7 @@ func (s *Server) Routes() http.Handler {
 
 	// JSON API.
 	mux.HandleFunc("GET /api/projects", s.handleProjects)
+	mux.HandleFunc("GET /api/projects/{project}", s.handleProject)
 	mux.HandleFunc("GET /api/projects/{project}/worktrees/{handle}", s.handleWorktree)
 	mux.HandleFunc("GET /api/projects/{project}/worktrees/{handle}/output", s.handleOutput)
 	mux.HandleFunc("POST /api/projects/{project}/worktrees/{handle}/open", s.handleOpen)
