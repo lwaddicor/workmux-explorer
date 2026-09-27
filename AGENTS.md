@@ -38,34 +38,8 @@ type: summary
 - Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`.
 - Optional scope allowed: `feat(api): ...`.
 - Imperative mood, lowercase, no trailing period, summary ≤ ~72 chars.
-- Examples from history: `feat: add web dashboard`, `docs: add OpenSpec specs`.
+- Examples from history: `feat: add web dashboard`, `docs: add README`.
 - One logical change per commit; do not mix refactors with behavior changes.
-
-## OpenSpec workflow (required for non-trivial work)
-
-This repo is developed spec-driven with OpenSpec. Layout:
-
-- `openspec/specs/` — current source of truth (worktree-inventory,
-  worktree-lifecycle, agent-interaction, web-dashboard).
-- `openspec/changes/` — active change proposals; `openspec/changes/archive/`
-  — completed ones.
-
-For any feature, significant behavior change, or API change:
-
-1. **Propose** — use the `openspec-propose` skill (or `/opsx-propose`) to
-   create the change (proposal, design, delta specs, tasks).
-2. **Implement** — use `openspec-apply-change` (`/opsx-apply`) to work
-   through the tasks; mark them off in `tasks.md` as they complete.
-3. **Sync** — use `openspec-sync-specs` (`/opsx-sync`) to fold delta specs
-   into `openspec/specs/`.
-4. **Archive** — use `openspec-archive-change` (`/opsx-archive`) when done.
-
-For ambiguous requirements, use `openspec-explore` (`/opsx-explore`) to think
-it through before proposing. To revise an existing change, use
-`openspec-update-change` (`/opsx-update`).
-
-Trivial changes (typos, one-line fixes, comments) may skip the workflow, but
-the resulting behavior must still conform to `openspec/specs/`.
 
 ## Worktrees & workmux
 
